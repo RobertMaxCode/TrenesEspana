@@ -1,0 +1,6 @@
+build/
+*.apk
+*.apk.idsig
+debug.keystore
+*.log
+.DS_Store

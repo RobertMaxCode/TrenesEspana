@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trenes España</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #0a0e17;
+    --fg: #e8edf5;
+    --card: #111827;
+    --card-2: #1a2236;
+    --header: #0f1623;
+    --muted-fg: #8b9dba;
+    --muted-2: #64748b;
+    --border: #ffffff0f;
+    --separator: #1e293b;
+    --primary: #00d4ff;
+    --ok: #10b981;
+    --warn: #f59e0b;
+    --bad: #f87171;
+    --ld: #c9a6f0;
+    --indigo: #625fff;
+    --font: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg);
+               font-family: var(--font); color-scheme: dark; }
+  button, input { font-family: inherit; }
+  #map { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: var(--bg); }
+
+  #hud { position: absolute; z-index: 1000; top: 10px; left: 10px; right: 10px;
+         background: rgba(15,22,35,.96); border: 1px solid var(--border);
+         border-radius: 14px; padding: 12px 14px; box-shadow: 0 2px 8px #0000004d;
+         backdrop-filter: blur(8px); transition: opacity .2s; }
+  #hud .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .marca { display: flex; gap: 10px; align-items: center; min-width: 0; }
+  .logo { width: 36px; height: 36px; flex: 0 0 auto; }
+  .logo svg { display: block; width: 100%; height: 100%; }
+  .titulos { min-width: 0; }
+  .titulos h1 { font-size: 16px; margin: 0; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+  .titulos p { margin: 1px 0 0; font-size: 10.5px; color: var(--muted-fg);
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .estado { text-align: right; flex: 0 0 auto; }
+  .live { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px;
+          font-weight: 600; color: var(--ok); }
+  .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok);
+            box-shadow: 0 0 8px var(--ok); display: inline-block; }
+  #act { display: block; margin-top: 2px; font-size: 10px; color: var(--muted-fg);
+         font-variant-numeric: tabular-nums; }
+  .buscador-fila { display: flex; gap: 7px; margin-top: 10px; }
+  #buscar { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
+            background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+            padding: 9px 11px; color: var(--muted-2); font-size: 12.5px; font-weight: 500;
+            text-align: left; }
+  #buscar svg { flex: 0 0 auto; color: var(--muted-fg); }
+  #buscar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icono { width: 36px; height: 36px; flex: 0 0 auto; background: var(--card);
+           border: 1px solid var(--border); border-radius: 10px; color: var(--muted-fg);
+           display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .icono:active, #buscar:active { transform: scale(.98); background: var(--card-2); }
+  #hud .chips { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+  #hud .chip { display: inline-flex; align-items: center; gap: 5px; background: var(--card);
+               border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px;
+               font-size: 10.5px; color: var(--muted-fg); }
+  #hud .chip b { font-size: 11.5px; color: var(--fg); font-weight: 700; }
+  #hud .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  #hud .dot.c { background: var(--primary); }
+  #hud .dot.l { background: var(--ld); }
+  #hud .dot.o { background: var(--indigo); }
+  #hud .foot { margin-top: 7px; font-size: 9.5px; color: var(--muted-2); letter-spacing: .02em; }
+  #hud .err { color: var(--bad); }
+  body.buscando #hud { opacity: 0; pointer-events: none; }
+  body.mapa-oscuro .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.95) saturate(.65); }
+  body.mapa-simple .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) grayscale(1) brightness(.9) contrast(.9); }
+
+  #hoja { position: absolute; z-index: 1200; left: 8px; right: 8px; bottom: 8px;
+          background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+          box-shadow: 0 10px 30px #00000066; transform: translateY(120%);
+          transition: transform .25s ease, max-height .25s ease;
+          display: flex; flex-direction: column; overflow: hidden; max-height: 64vh; }
+  #hoja.abierta { transform: translateY(0); }
+  #hoja.peek { max-height: 96px; }
+  #hoja:not(.abierta) { pointer-events: none; }
+  .hoja-top { flex: 0 0 auto; padding: 7px 12px 10px; position: relative; cursor: pointer; }
+  .hoja-asa { width: 34px; height: 4px; border-radius: 2px; background: #334155; margin: 0 auto 8px; }
+  .hoja-resumen .l1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-right: 70px; }
+  .hoja-resumen .t { font-size: 15px; font-weight: 700; color: var(--fg); }
+  .hoja-resumen .s { font-size: 11.5px; color: var(--muted-fg); margin-top: 3px;
+                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
+  .hoja-acciones { position: absolute; top: 7px; right: 10px; display: flex; gap: 6px; }
+  .hoja-acciones button { background: var(--card-2); border: 1px solid var(--border);
+                          color: var(--muted-fg); width: 28px; height: 28px; border-radius: 8px;
+                          font-size: 13px; line-height: 1; }
+  .hoja-cuerpo { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; }
+  #hoja.peek .hoja-cuerpo { display: none; }
+  #hoja .iti-lista { max-height: none; }
+
+  #capasMenu { position: absolute; z-index: 2100; right: 10px; background: var(--card);
+               border: 1px solid var(--border); border-radius: 12px; padding: 5px;
+               display: none; flex-direction: column; min-width: 160px;
+               box-shadow: 0 8px 24px #00000066; }
+  #capasMenu.abierto { display: flex; }
+  #capasMenu button { border: 0; background: transparent; text-align: left; padding: 10px 12px;
+                      border-radius: 8px; font-size: 13px; color: var(--fg); }
+  #capasMenu button.on { background: var(--card-2); color: var(--primary); font-weight: 600; }
+
+  #velo { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,.45);
+          z-index: 1500; opacity: 0; pointer-events: none; transition: opacity .2s; }
+  #velo.abierto { opacity: 1; pointer-events: auto; }
+  #panel { position: absolute; z-index: 2000; top: 0; left: 0; right: 0; bottom: 0;
+           background: var(--bg); border-top: 1px solid var(--separator);
+           transform: translateY(105%); transition: transform .26s ease;
+           display: flex; flex-direction: column; }
+  #panel.abierto { transform: translateY(0); }
+  #panel .head { display: flex; align-items: center; justify-content: space-between;
+                 padding: 16px 16px 6px; }
+  #panel h2 { margin: 0; font-size: 18px; color: var(--fg); letter-spacing: -.01em; }
+  #panel .close { border: 1px solid var(--border); background: var(--card); color: var(--muted-fg);
+                  width: 32px; height: 32px; border-radius: 9px; font-size: 14px; }
+  #q { margin: 6px 16px 0; padding: 12px 14px; font-size: 15px; border: 1px solid var(--separator);
+       border-radius: 10px; background: var(--card); color: var(--fg); outline: none; }
+  #q::placeholder { color: var(--muted-2); }
+  #q:focus { border-color: var(--primary); }
+  .filtros { display: flex; gap: 7px; overflow-x: auto; padding: 10px 16px 0; -webkit-overflow-scrolling: touch; }
+  .filtros::-webkit-scrollbar { display: none; }
+  .chipbtn { flex: 0 0 auto; border: 1px solid var(--border); background: var(--card);
+             color: var(--muted-fg); padding: 7px 12px; border-radius: 8px;
+             font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+  .chipbtn.on { background: rgba(0,212,255,.12); border-color: var(--primary); color: var(--primary); }
+  #cuenta { padding: 10px 18px 6px; font-size: 10.5px; color: var(--muted-2);
+            text-transform: uppercase; letter-spacing: .08em; }
+  #lista { flex: 1; overflow-y: auto; padding: 0 8px 24px; -webkit-overflow-scrolling: touch; }
+  .res { display: flex; gap: 10px; padding: 10px 12px; border-radius: 10px;
+         background: var(--card); border: 1px solid var(--border); margin-bottom: 7px;
+         align-items: flex-start; }
+  .res:active { background: var(--card-2); }
+  .res .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex: 0 0 auto; }
+  .res .cuerpo { flex: 1; min-width: 0; }
+  .res .l1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .res .t { font-size: 13px; font-weight: 600; color: var(--fg); }
+  .res .s { font-size: 11px; color: var(--muted-fg); margin-top: 3px; line-height: 1.35; }
+  .badge { font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 5px;
+           border: 1px solid; letter-spacing: .02em; white-space: nowrap; }
+  .delay { color: var(--warn); font-size: 10.5px; font-weight: 700; margin-left: auto; white-space: nowrap; }
+  .vacio { padding: 28px 16px; text-align: center; color: var(--muted-2); font-size: 13px; }
+
+  .leaflet-popup-content-wrapper { border-radius: 14px; padding: 0; overflow: hidden;
+         background: var(--card); color: var(--fg); border: 1px solid var(--border);
+         box-shadow: 0 10px 30px #00000066; }
+  .leaflet-popup-content { margin: 0; width: 300px !important; color: var(--fg);
+         font: 12.5px/1.4 var(--font); }
+  .leaflet-popup-tip { background: var(--card); border: 1px solid var(--border); box-shadow: none; }
+  .leaflet-popup-close-button { color: var(--fg) !important; background: rgba(10,14,23,.65) !important;
+         border-radius: 50%; width: 26px !important; height: 26px !important;
+         line-height: 24px !important; text-align: center; padding: 0 !important;
+         right: 8px !important; top: 8px !important; font-size: 18px !important; }
+  .card .foto { display: block; width: 100%; height: 132px; object-fit: cover; background: var(--card-2); }
+  .card .body { padding: 12px 14px 13px; background: var(--card); }
+  .card .eyebrow { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-fg); }
+  .card h2 { margin: 2px 0 10px; font-size: 18px; line-height: 1.15; color: var(--fg); }
+  .card .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0;
+               border-top: 1px solid var(--separator); font-size: 12px; }
+  .card .row span { color: var(--muted-fg); flex: 0 0 auto; }
+  .card .row b { color: var(--fg); text-align: right; font-weight: 600; max-width: 66%; }
+  .card .foot { margin-top: 9px; font-size: 10px; color: var(--muted-2); }
+  .card .foot a { color: var(--muted-fg); }
+  .iti { margin-top: 8px; border-top: 1px solid var(--separator); padding-top: 7px; }
+  .iti-t { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-fg); margin-bottom: 4px; }
+  .iti-lista { max-height: 150px; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-right: 2px; }
+  .iti-lista .p { display: flex; gap: 10px; padding: 4px 0; font-size: 11.5px; color: #cbd5e1;
+                  border-top: 1px solid var(--separator); }
+  .iti-lista .p:first-child { border-top: 0; }
+  .iti-lista .p .h { color: var(--muted-fg); width: 84px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+  .iti-lista .p .n { flex: 1; }
+  .iti-lista .p .dem { margin-left: auto; color: var(--warn); font-size: 10px;
+                       font-weight: 700; padding-left: 6px; white-space: nowrap; }
+  .tren-flecha { background: transparent !important; border: 0 !important; cursor: pointer; }
+  .tren-flecha svg { display: block; overflow: visible; transform-origin: 50% 50%;
+                     filter: drop-shadow(0 1px 2px #000c); }
+  .comfort { display: inline-flex; align-items: center; gap: 6px; }
+  .comfort b { color: var(--ok); font-size: 12px; }
+  .comfort i { width: 46px; height: 5px; border-radius: 3px; background: var(--separator);
+               position: relative; overflow: hidden; }
+  .comfort i::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+                      width: var(--w, 50%); background: var(--ok); border-radius: 3px; }
+  .iti-lista .p.pasada { opacity: .4; }
+  .iti-lista .p.proxima { font-weight: 600; color: var(--primary); }
+  .iti-vacio { font-size: 11.5px; color: var(--muted-2); padding: 4px 0; }
+
+  .leaflet-control-zoom a { background: var(--card) !important; color: var(--muted-fg) !important;
+                            border-color: var(--border) !important; }
+  .leaflet-top.leaflet-right { top: 196px; transition: top .2s ease; }
+  .leaflet-control-zoom a:hover { background: var(--card-2) !important; color: var(--fg) !important; }
+  .leaflet-bar { border: 1px solid var(--border) !important; box-shadow: 0 2px 8px #0000004d !important; }
+  .leaflet-control-attribution { background: rgba(10,14,23,.8) !important; color: var(--muted-2) !important; }
+  .leaflet-control-attribution a { color: var(--muted-fg) !important; }
+  .leaflet-control-scale-line { background: rgba(10,14,23,.8); color: var(--muted-fg);
+                                border-color: var(--muted-2); }
+  #leyenda { position: absolute; z-index: 900; left: 10px; bottom: 34px; display: flex; gap: 9px;
+             background: rgba(10,14,23,.85); border: 1px solid var(--border); border-radius: 8px;
+             padding: 5px 8px; font-size: 9.5px; color: var(--muted-fg); backdrop-filter: blur(6px); }
+  #leyenda span { display: inline-flex; align-items: center; gap: 4px; }
+  #leyenda i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="hud">
+  <div class="top">
+    <div class="marca">
+      <div class="logo">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="14" fill="#0f1623" stroke="#00d4ff" stroke-width="1.6"/>
+          <circle cx="16" cy="16" r="8.5" fill="none" stroke="#00d4ff" stroke-opacity=".35" stroke-width="1.2"/>
+          <circle cx="16" cy="16" r="3" fill="none" stroke="#00d4ff" stroke-opacity=".5"/>
+          <path d="M16 16 L26 9" stroke="#00d4ff" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="22" cy="11" r="2" fill="#f99c00"/>
+        </svg>
+      </div>
+      <div class="titulos">
+        <h1>Trenes España</h1>
+        <p>Trenes en tiempo real en España</p>
+      </div>
+    </div>
+    <div class="estado">
+      <span class="live"><i></i>Live</span>
+      <span id="act">--:--:--</span>
+    </div>
+  </div>
+  <div class="buscador-fila">
+    <button id="buscar" title="Buscar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.2-4.2"/></svg>
+      <span>Buscar tren o estación</span>
+    </button>
+    <button id="capasBtn" class="icono" title="Capas del mapa">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>
+      </svg>
+    </button>
+    <button id="reload" class="icono" title="Actualizar">↻</button>
+  </div>
+  <div class="chips" id="chips">Cargando…</div>
+  <div class="foot" id="pie">Renfe · FGC · Metro Bilbao</div>
+</div>
+
+<div id="leyenda">
+  <span><i style="background:#00d4ff"></i>Cercanías</span>
+  <span><i style="background:#c9a6f0"></i>Larga distancia</span>
+  <span><i style="background:#625fff"></i>Otros</span>
+</div>
+
+<section id="hoja" aria-live="polite">
+  <div class="hoja-top" id="hojaTop">
+    <div class="hoja-asa"></div>
+    <div class="hoja-resumen" id="hojaResumen"></div>
+    <div class="hoja-acciones">
+      <button id="hojaToggle" title="Expandir">⌃</button>
+      <button id="hojaCerrar" title="Cerrar">✕</button>
+    </div>
+  </div>
+  <div class="hoja-cuerpo" id="hojaCuerpo"></div>
+</section>
+
+<div id="capasMenu">
+  <button data-capa="estandar">Estándar</button>
+  <button data-capa="simple">Simple</button>
+  <button data-capa="relieve">Relieve</button>
+  <button data-capa="oscuro">Oscuro</button>
+</div>
+
+<div id="velo"></div>
+<div id="panel">
+  <div class="head"><h2>Buscar trenes</h2><button class="close" id="cerrar">✕</button></div>
+  <input id="q" type="search" placeholder="Buscar tren o estación" autocomplete="off">
+  <div class="filtros" id="tipos"></div>
+  <div class="filtros" id="rutas"></div>
+  <div id="cuenta"></div>
+  <div id="lista"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="data.js"></script>
+<script src="gtfs.js"></script>
+<script src="rutas.js"></script>
+<script src="horarios.js"></script>
+<script src="otros.js"></script>
+<script>
+var map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([40.3, -3.7], 6);
+L.control.zoom({ position: 'topright' }).addTo(map);
+L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+
+var CAPAS = {
+  estandar: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              atr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', max: 19 },
+  simple: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            atr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> (simple)', max: 19 },
+  relieve: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+             atr: '&copy; OpenStreetMap, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)', max: 17 },
+  oscuro: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            atr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> (modo oscuro)', max: 19 }
+};
+var capaId = 'oscuro';
+try { var capaGuardada = localStorage.getItem('trenesCapa2'); if (capaGuardada && CAPAS[capaGuardada]) capaId = capaGuardada; } catch (e) {}
+var capaMapa = null;
+
+function aplicarCapa(id) {
+  if (!CAPAS[id]) return;
+  capaId = id;
+  if (capaMapa) map.removeLayer(capaMapa);
+  var c = CAPAS[id];
+  capaMapa = L.tileLayer(c.url, { maxZoom: c.max, attribution: c.atr }).addTo(map);
+  if (map.getZoom() > c.max) map.setZoom(c.max);
+  document.body.classList.toggle('mapa-oscuro', id === 'oscuro');
+  document.body.classList.toggle('mapa-simple', id === 'simple');
+  var botones = document.querySelectorAll('#capasMenu button');
+  for (var i = 0; i < botones.length; i++) {
+    botones[i].className = (botones[i].getAttribute('data-capa') === id) ? 'on' : '';
+  }
+  var menu = document.getElementById('capasMenu');
+  if (menu) menu.classList.remove('abierto');
+  try { localStorage.setItem('trenesCapa2', id); } catch (e) {}
+}
+aplicarCapa(capaId);
+
+var capa = L.layerGroup().addTo(map);
+var rutaLayer = L.layerGroup().addTo(map);
+var chips = document.getElementById('chips');
+var pie = document.getElementById('pie');
+var actEl = document.getElementById('act');
+var panelAbierto = false;
+var viajando = false;
+var zoomAnterior = map.getZoom();
+map.on('zoomend', function () {
+  var z = map.getZoom();
+  if (hojaAbierta && !hojaEsEstacion && z < zoomAnterior && !hojaEl.classList.contains('peek')) {
+    hojaEl.classList.add('peek');
+    actualizarHojaBoton();
+  }
+  zoomAnterior = z;
+});
+
+var STATUS = { IN_TRANSIT_TO: 'En ruta', INCOMING_AT: 'Llegando', STOPPED_AT: 'Parado' };
+var PRODUCTOS = { '2': 'AVE', '3': 'Avant', '10': 'Euromed', '11': 'Alvia',
+                  '13': 'Intercity', '16': 'Media Distancia', '18': 'Regional',
+                  '19': 'Regional Exprés', '28': 'AVLO' };
+var COLOR_OP = { 'FGC': '#10b981', 'Metro Bilbao': '#a78bfa' };
+var FOTOS = {};
+var ULTIMO = { c: [], l: [], o: [] };
+var TIPO = 'todo';
+var RUTA = '';
+var CHIPS = [];
+var RESULTADOS = [];
+var PARSEADOS = {};
+
+var panel = document.getElementById('panel');
+var velo = document.getElementById('velo');
+var q = document.getElementById('q');
+var tiposEl = document.getElementById('tipos');
+var rutasEl = document.getElementById('rutas');
+var listaEl = document.getElementById('lista');
+var cuentaEl = document.getElementById('cuenta');
+var capasMenuEl = document.getElementById('capasMenu');
+var hojaEl = document.getElementById('hoja');
+var hojaResumen = document.getElementById('hojaResumen');
+var hojaCuerpo = document.getElementById('hojaCuerpo');
+var hojaToggle = document.getElementById('hojaToggle');
+var hojaAbierta = false;
+var hojaEntrada = null;
+var hojaEsEstacion = false;
+var ESTACIONES_LISTA = null;
+var ESTACIONES_MOSTRADAS = [];
+var ESTACION_TRENES = [];
+
+function esc(v) {
+  return String(v).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+function norm(s) {
+  try { return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  catch (e) { return String(s).toLowerCase(); }
+}
+
+function bonito(s) {
+  s = String(s);
+  if (s !== s.toUpperCase()) return esc(s);
+  return esc(s.toLowerCase().replace(/(^|[\s\-\/])([a-záéíóúñü])/g, function (m, a, b) {
+    return a + b.toUpperCase();
+  }));
+}
+
+function textoEstacion(valor) {
+  if (!valor) return '';
+  var s = String(valor);
+  var n = (window.STATIONS || {})[s];
+  if (!n && window.STOPS_LD && window.STOPS_LD[s]) n = window.STOPS_LD[s][2];
+  if (n) return n;
+  if (!/^\d+$/.test(s)) return s;
+  return '';
+}
+
+function estacion(valor) {
+  var s = textoEstacion(valor);
+  if (s) return bonito(s);
+  return valor ? 'Estación ' + esc(valor) : '—';
+}
+
+function recorridoRaw(o, d) {
+  var a = textoEstacion(o), b = textoEstacion(d);
+  if (!a && !b) return '—';
+  if (!a) return '→ ' + b;
+  if (!b) return a + ' →';
+  return a + ' → ' + b;
+}
+
+function recorridoHtml(o, d) {
+  var a = o ? estacion(o) : '';
+  var b = d ? estacion(d) : '';
+  if (!a && !b) return '—';
+  if (!a) return '→ ' + b;
+  if (!b) return a + ' →';
+  return a + ' → ' + b;
+}
+
+function rutaDe(tripId) {
+  var idx = window.TRIPS ? window.TRIPS[String(tripId || '').substring(5)] : undefined;
+  if (idx === undefined || !window.RUTAS || !window.RUTAS[idx]) return null;
+  var r = window.RUTAS[idx];
+  return { l: r[0], o: r[1], d: r[2], paradas: r[3] || [] };
+}
+
+function foto(consulta) {
+  if (!(consulta in FOTOS)) {
+    var r = {};
+    try { r = JSON.parse(Android.getFoto(consulta)) || {}; } catch (e) { r = {}; }
+    if (r && r.url) FOTOS[consulta] = r;
+    return r;
+  }
+  return FOTOS[consulta];
+}
+
+function creditoFoto(consulta) {
+  var f = foto(consulta);
+  if (!f || !f.url) return '';
+  var enlace = f.pagina
+    ? '<a href="https://es.wikipedia.org/wiki/' + encodeURIComponent(f.pagina) + '">' + esc(f.pagina) + '</a>'
+    : 'Wikimedia Commons';
+  return ' · Foto: ' + enlace;
+}
+
+function imagen(consulta) {
+  var f = foto(consulta);
+  return (f && f.url) ? '<img class="foto" src="' + esc(f.url) + '" alt="">' : '';
+}
+
+function fila(k, v) {
+  return '<div class="row"><span>' + k + '</span><b>' + v + '</b></div>';
+}
+
+function hms(epoch) {
+  if (!epoch) return '—';
+  return new Date(parseInt(epoch, 10) * 1000).toLocaleTimeString('es-ES',
+    { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function horaCorta(iso) {
+  var m = /T(\d{2}:\d{2})/.exec(iso || '');
+  return m ? m[1] : (iso || '');
+}
+
+function horaOtro(v) {
+  if (v === undefined || v === null || v === '') return '';
+  var s = String(v);
+  if (/^\d+$/.test(s)) return hms(s);
+  var m = /T(\d{2}:\d{2})/.exec(s);
+  return m ? m[1] : '';
+}
+
+function rumbo(lat1, lon1, lat2, lon2) {
+  var rad = Math.PI / 180;
+  var dLon = (lon2 - lon1) * rad;
+  var y = Math.sin(dLon) * Math.cos(lat2 * rad);
+  var x = Math.cos(lat1 * rad) * Math.sin(lat2 * rad) -
+          Math.sin(lat1 * rad) * Math.cos(lat2 * rad) * Math.cos(dLon);
+  return (Math.atan2(y, x) / rad + 360) % 360;
+}
+
+function coordsEstacion(tipo, codigo) {
+  if (codigo === undefined || codigo === null) return null;
+  if (tipo === 'c') return window.STOPS_C ? (window.STOPS_C[String(codigo)] || null) : null;
+  if (tipo === 'l') return window.STOPS_LD ? (window.STOPS_LD[String(codigo)] || null) : null;
+  if (tipo === 'mb') return window.MB_COORDS ? (window.MB_COORDS[String(codigo)] || null) : null;
+  return null;
+}
+
+var ULTIMAS_POS = {};
+var RUMBOS = {};
+var VEL_PREV = {};
+
+function iconoFlecha(grados, color, tam) {
+  var size = tam || 20;
+  var valido = !(grados === null || grados === undefined || isNaN(grados));
+  var rot = valido ? grados : 0;
+  var op = valido ? 1 : .55;
+  return L.divIcon({
+    className: 'tren-flecha',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    html: '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size +
+      '" style="transform:rotate(' + rot + 'deg);opacity:' + op + '">' +
+      '<path d="M12 2 L21 21 L12 16.5 L3 21 Z" fill="' + color +
+      '" stroke="#0a0e17" stroke-width="1.3" stroke-linejoin="round"/>' +
+      '<path d="M12 6 L17.2 17.4 L12 14.6 L6.8 17.4 Z" fill="#ffffff" opacity=".22"/></svg>'
+  });
+}
+
+function distanciaMetros(lat1, lon1, lat2, lon2) {
+  var R = 6371000, rad = Math.PI / 180;
+  var dLat = (lat2 - lat1) * rad, dLon = (lon2 - lon1) * rad;
+  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(lat1 * rad) * Math.cos(lat2 * rad) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function velocidadDerivada(clave, lat, lon, ts) {
+  if (!clave || typeof lat !== 'number' || typeof lon !== 'number') return null;
+  var prev = VEL_PREV[clave];
+  VEL_PREV[clave] = { lat: lat, lon: lon, ts: ts || 0 };
+  if (!prev || !prev.ts || !ts || ts <= prev.ts) return null;
+  var dt = ts - prev.ts;
+  if (dt < 8 || dt > 1200) return null;
+  var kmh = (distanciaMetros(prev.lat, prev.lon, lat, lon) / dt) * 3.6;
+  if (kmh > 400) return null;
+  return kmh;
+}
+
+function epochDe(iso) {
+  var ms = Date.parse(iso);
+  return isNaN(ms) ? 0 : Math.floor(ms / 1000);
+}
+
+function velocidadTexto(v) {
+  if (v === null || v === undefined) return 'Calculando…';
+  return Math.round(v) + ' km/h';
+}
+
+function horaGtfs(t) {
+  if (!t) return '';
+  var p = t.split(':');
+  var h = parseInt(p[0], 10);
+  if (h >= 24) return ('0' + (h - 24)).slice(-2) + ':' + p[1] + ' +1d';
+  return t;
+}
+
+function minutosDe(t) {
+  var m = /^(\d{1,2}):(\d{2})/.exec(t || '');
+  return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+}
+
+function tiempoParada(arr, dep) {
+  var a = horaGtfs(arr), d = horaGtfs(dep);
+  if (a && d && a !== d) return a + '–' + d;
+  return d || a || '—';
+}
+
+function parseHorario(raw) {
+  if (!raw) return null;
+  if (raw in PARSEADOS) return PARSEADOS[raw];
+  var out = raw.split(';').map(function (fila) {
+    var p = fila.split(',');
+    return [p[0], p[1] || '', p[2] || ''];
+  });
+  PARSEADOS[raw] = out;
+  return out;
+}
+
+function buscarParada(horario, id) {
+  if (!horario || id === undefined || id === null) return -1;
+  for (var i = 0; i < horario.length; i++) {
+    if (String(horario[i][0]) === String(id)) return i;
+  }
+  return -1;
+}
+
+function horarioCercanias(tripId) {
+  if (!tripId) return null;
+  var cache = 'c:' + tripId;
+  if (cache in PARSEADOS) return PARSEADOS[cache];
+  var key = String(tripId).substring(5);
+  var servi = String(tripId).substring(0, 5);
+  var raw = (window.HORARIOS_C || {})[key];
+  if (!raw && window.VARIANTES_C && window.VARIANTES_C[key]) {
+    var mapa = (window.SERVICIOS_C || {})[key] || {};
+    var idx = (mapa[servi] !== undefined) ? mapa[servi] : 0;
+    raw = window.VARIANTES_C[key][idx];
+  }
+  var out = parseHorario(raw);
+  PARSEADOS[cache] = out;
+  return out;
+}
+
+function horarioLd(cod, proxId, eta) {
+  var lista = (window.HORARIOS_LD || {})[cod];
+  if (!lista || !lista.length) return null;
+  if (lista.length === 1) return parseHorario(lista[0]);
+  var cache = 'l:' + cod + ':' + proxId + ':' + eta;
+  if (cache in PARSEADOS) return PARSEADOS[cache];
+  var objetivo = minutosDe(eta);
+  var mejor = null, mejorDif = null;
+  lista.forEach(function (raw) {
+    var h = parseHorario(raw);
+    var idx = buscarParada(h, proxId);
+    if (idx < 0) return;
+    var t = minutosDe(h[idx][1] || h[idx][2]);
+    if (t === null) return;
+    var dif = (objetivo === null) ? 0 : Math.abs(t - objetivo);
+    if (mejor === null || dif < mejorDif) { mejor = h; mejorDif = dif; }
+  });
+  if (!mejor) mejor = parseHorario(lista[0]);
+  PARSEADOS[cache] = mejor;
+  return mejor;
+}
+
+function listaParadasHtml(horario, proxId, horaProx, demora, demoras) {
+  if (!horario || !horario.length) {
+    return '<div class="iti-t">Paradas · horario previsto</div><div class="iti-vacio">Sin horario disponible</div>';
+  }
+  var idxProx = buscarParada(horario, proxId);
+  var filas = '';
+  horario.forEach(function (p, i) {
+    var nombre = textoEstacion(p[0]);
+    var hora = (i === idxProx && horaProx) ? ('≈ ' + horaProx) : tiempoParada(p[1], p[2]);
+    var clase = i === idxProx ? ' proxima' : (idxProx >= 0 && i < idxProx ? ' pasada' : '');
+    var d = (demoras && demoras[p[0]] !== undefined) ? demoras[p[0]] : (demora || 0);
+    var demHtml = d > 0 ? '<span class="dem">+' + d + '</span>' : '';
+    filas += '<div class="p' + clase + '"><span class="h">' + esc(hora) +
+             '</span><span class="n">' + (nombre ? bonito(nombre) : 'Estación ' + esc(p[0])) +
+             '</span>' + demHtml + '</div>';
+  });
+  return '<div class="iti-t">Paradas · horario previsto</div><div class="iti-lista">' + filas + '</div>';
+}
+
+var SERVICIOS = ['AVE', 'AVLO', 'Alvia', 'Avant', 'Media Distancia', 'Cercanías', 'Trenhotel'];
+
+function servicio(modelo) {
+  for (var i = 0; i < SERVICIOS.length; i++) {
+    if (modelo.indexOf(SERVICIOS[i]) === 0) return SERVICIOS[i];
+  }
+  return 'Larga distancia';
+}
+
+function colorServicio(s) {
+  if (s === 'AVE') return '#c9a6f0';
+  if (s === 'AVLO') return '#10b981';
+  if (s === 'Alvia') return '#60a5fa';
+  if (s === 'Avant') return '#00d4ff';
+  if (s === 'Euromed') return '#a5b4fc';
+  if (s === 'Intercity') return '#60a5fa';
+  if (s === 'Media Distancia') return '#f59e0b';
+  if (s === 'Regional Exprés') return '#f97316';
+  if (s === 'Regional') return '#fb923c';
+  if (s === 'Trenhotel') return '#f99c00';
+  if (s === 'Cercanías') return '#00d4ff';
+  return '#a5b4fc';
+}
+
+function comodidad(serv, info) {
+  var base = { 'AVE': 86, 'AVLO': 82, 'Euromed': 82, 'Alvia': 78, 'Avant': 75,
+               'Intercity': 70, 'Media Distancia': 66, 'Trenhotel': 72,
+               'Regional Exprés': 64, 'Regional': 60,
+               'Cercanías': 58, 'Larga distancia': 68 }[serv] || 65;
+  var v = info && info.velocidad ? parseInt(info.velocidad, 10) : 0;
+  if (v >= 300) base += 4;
+  else if (v >= 250) base += 2;
+  else if (v && v <= 120) base -= 4;
+  return Math.max(35, Math.min(95, base));
+}
+
+function comodidadHtml(n) {
+  return '<span class="comfort"><b>' + n + '%</b><i style="--w:' + n + '%"></i></span>';
+}
+
+function cardCercanias(e) {
+  var v = e.vehicle || {}, p = v.vehicle || {};
+  var label = p.label || p.id || e.id || '';
+  var linea = (label.split('-')[0] || 'Cercanías');
+  var estado = STATUS[v.currentStatus] || v.currentStatus || '—';
+  var ruta = rutaDe(v.trip && v.trip.tripId);
+  var horario = horarioCercanias(v.trip && v.trip.tripId);
+  var demora = e._demora || 0;
+  var demoras = e._demoras || {};
+  var consulta = 'Cercanías Renfe';
+  return '<div class="card">' + imagen(consulta) + '<div class="body">' +
+    '<div class="eyebrow">Cercanías · ' + esc(label) + '</div>' +
+    '<h2>Línea ' + esc(linea) + '</h2>' +
+    fila('Ruta', recorridoHtml(ruta && ruta.o, ruta && ruta.d)) +
+    (ruta && ruta.paradas && ruta.paradas.length
+      ? fila('Paradas', esc(String(ruta.paradas.length))) : '') +
+    fila('Próxima parada', estacion(v.stopId)) +
+    fila('Estado', esc(estado)) +
+    fila('Retraso', demora > 0 ? '+' + demora + ' min' : 'Sin datos') +
+    fila('Velocidad actual', velocidadTexto(e._vel)) +
+    fila('Velocidad máx.', 'No disponible') +
+    fila('Comodidad (est.)', comodidadHtml(58)) +
+    fila('Actualizado', hms(v.timestamp)) +
+    '<div class="iti">' + listaParadasHtml(horario, v.stopId, '', demora, demoras) + '</div>' +
+    '<div class="foot">Viaje ' + esc((v.trip && v.trip.tripId) || '—') +
+      ' · Datos: Renfe Open Data' + creditoFoto(consulta) +
+      ' · Velocidad calculada por GPS. · Comodidad estimada sin reseñas públicas.</div>' +
+    '</div></div>';
+}
+
+function cardLarga(t) {
+  var serie = String(t.mat || '').substring(0, 3);
+  var info = (window.TRAINS || {})[serie] || {};
+  var consulta = serie ? ('Serie ' + serie + ' de Renfe') : '';
+  var retraso = parseInt(t.ultRetraso || '0', 10);
+  var servLd = PRODUCTOS[String(t.codProduct)] ||
+    (info.modelo ? servicio(info.modelo) : 'Larga distancia');
+  var horario = horarioLd(String(t.codComercial || ''), t.codEstSig, horaCorta(t.horaLlegadaSigEst));
+  return '<div class="card">' + (consulta ? imagen(consulta) : '') + '<div class="body">' +
+    '<div class="eyebrow">' + esc(servLd) +
+      ' · Serie ' + esc(serie || '—') + '</div>' +
+    '<h2>Tren ' + esc(t.codComercial || '—') + '</h2>' +
+    fila('Recorrido', estacion(t.codOrigen) + ' → ' + estacion(t.codDestino)) +
+    fila('Próxima parada', estacion(t.codEstSig) +
+      (t.horaLlegadaSigEst ? ' · ' + esc(horaCorta(t.horaLlegadaSigEst)) : '')) +
+    fila('Retraso', retraso > 0 ? esc(retraso) + ' min' : 'Sin retraso') +
+    fila('Velocidad actual', velocidadTexto(t._vel)) +
+    fila('Comodidad (est.)', comodidadHtml(comodidad(servLd, info))) +
+    (info.velocidad ? fila('Velocidad máx.', esc(info.velocidad)) : '') +
+    (info.plazas ? fila('Plazas', esc(info.plazas)) : '') +
+    (info.constructor ? fila('Fabricante', esc(info.constructor)) : '') +
+    fila('Actualizado', hms(t.time)) +
+    '<div class="iti">' + listaParadasHtml(horario, t.codEstSig,
+      horaCorta(t.horaLlegadaSigEst), retraso, {}) + '</div>' +
+    '<div class="foot">Datos: Renfe Open Data' + (consulta ? creditoFoto(consulta) : '') +
+      ' · Velocidad calculada por GPS. · Comodidad estimada sin reseñas públicas.</div>' +
+    '</div></div>';
+}
+
+function cardOtro(t) {
+  var color = COLOR_OP[t.op] || '#a5b4fc';
+  return '<div class="card"><div class="body">' +
+    '<div class="eyebrow" style="color:' + color + '">Operador · datos abiertos</div>' +
+    '<h2><span style="color:' + color + '">●</span> ' + esc(t.op) + '</h2>' +
+    (t.line ? fila('Línea', esc(t.line)) : '') +
+    (t.dest ? fila('Destino', esc(t.dest)) : '') +
+    (t.servicio ? fila('Servicio', esc(t.servicio)) : '') +
+    (t.veh && !t.servicio ? fila('Vehículo', esc(t.veh)) : '') +
+    (t.hora ? fila('Actualizado', esc(t.hora)) : '') +
+    fila('Velocidad actual', velocidadTexto(t.vel)) +
+    fila('Velocidad máx.', 'No disponible') +
+    fila('Comodidad (est.)', comodidadHtml(t.op === 'Metro Bilbao' ? 62 : 66)) +
+    '<div class="foot">Datos: ' + esc(t.op) +
+      ' · Open Data · Velocidad calculada por GPS. · Comodidad estimada sin reseñas públicas.</div>' +
+    '</div></div>';
+}
+
+function idsHorario(horario) {
+  return horario ? horario.map(function (p) { return p[0]; }) : [];
+}
+
+function coordsDeParadas(ids, stops) {
+  var out = [];
+  ids.forEach(function (id) {
+    var c = stops ? stops[id] : null;
+    if (c) out.push([c[0], c[1]]);
+  });
+  return out;
+}
+
+function limpiarRuta() {
+  rutaLayer.clearLayers();
+}
+
+function resumenHtml(e) {
+  var badge = e.badge
+    ? '<span class="badge" style="color:' + e.badgeColor + ';background:' + e.badgeColor +
+      '1f;border-color:' + e.badgeColor + '40">' + esc(e.badge) + '</span>' : '';
+  var delay = ((e.retraso || 0) > 0)
+    ? '<span class="delay">+' + e.retraso + ' min</span>' : '';
+  return '<div class="l1">' + badge + '<span class="t">' + esc(e.titulo) + '</span>' + delay + '</div>' +
+         '<div class="s">' + esc(e.sub) + '</div>';
+}
+
+function actualizarHojaBoton() {
+  var peek = hojaEl.classList.contains('peek');
+  hojaToggle.textContent = peek ? '⌃' : '⌄';
+  hojaToggle.title = peek ? 'Expandir' : 'Contraer';
+}
+
+function abrirHoja(entrada) {
+  if (!entrada) return;
+  if (hojaEntrada && hojaEntrada.marker && hojaEntrada.marker.setZIndexOffset) {
+    hojaEntrada.marker.setZIndexOffset(0);
+  }
+  hojaEntrada = entrada;
+  hojaAbierta = true;
+  hojaEsEstacion = false;
+  if (entrada.marker && entrada.marker.setZIndexOffset) entrada.marker.setZIndexOffset(1000);
+  hojaResumen.innerHTML = resumenHtml(entrada);
+  hojaCuerpo.innerHTML = entrada.cardHtml ? entrada.cardHtml() : '';
+  hojaEl.classList.add('abierta');
+  hojaEl.classList.add('peek');
+  capasMenuEl.classList.remove('abierto');
+  actualizarHojaBoton();
+  dibujarRuta(entrada);
+}
+
+function alternarHoja() {
+  if (!hojaAbierta) return;
+  hojaEl.classList.toggle('peek');
+  actualizarHojaBoton();
+}
+
+function abrirEstacion(s) {
+  if (!s) return;
+  var objetivo = norm(s.nombre);
+  var trenes = ULTIMO.c.concat(ULTIMO.l, ULTIMO.o).filter(function (e) {
+    if (!e.d) return false;
+    var d = norm(e.d);
+    return d === objetivo || d.indexOf(objetivo) >= 0 || objetivo.indexOf(d) >= 0;
+  });
+  ESTACION_TRENES = trenes;
+  hojaEntrada = null;
+  hojaAbierta = true;
+  hojaEsEstacion = true;
+  capasMenuEl.classList.remove('abierto');
+  hojaEl.classList.add('abierta');
+  hojaEl.classList.remove('peek');
+  hojaResumen.innerHTML =
+    '<div class="l1"><span class="badge" style="color:#8b9dba;background:#8b9dba1f;border-color:#8b9dba40">Estación</span>' +
+    '<span class="t">' + esc(s.nombre) + '</span></div>' +
+    '<div class="s">' + trenes.length +
+    (trenes.length === 1 ? ' tren con destino aquí' : ' trenes con destino aquí') + '</div>';
+  hojaCuerpo.innerHTML = trenes.length
+    ? trenes.map(function (e, i) { return filaTrenHtml(e, i, true); }).join('')
+    : '<div class="vacio">Ningún tren en vivo con destino aquí</div>';
+  actualizarHojaBoton();
+  limpiarRuta();
+}
+
+function cerrarHoja() {
+  if (!hojaAbierta) return;
+  if (hojaEntrada && hojaEntrada.marker && hojaEntrada.marker.setZIndexOffset) {
+    hojaEntrada.marker.setZIndexOffset(0);
+  }
+  hojaAbierta = false;
+  hojaEntrada = null;
+  hojaEsEstacion = false;
+  hojaEl.classList.remove('abierta');
+  hojaEl.classList.remove('peek');
+  limpiarRuta();
+}
+
+function ajustarControles() {
+  var hudRect = document.getElementById('hud').getBoundingClientRect();
+  var ctrl = document.querySelector('.leaflet-top.leaflet-right');
+  if (ctrl) ctrl.style.top = Math.round(hudRect.bottom + 8) + 'px';
+}
+
+function dibujarRuta(entrada) {
+  limpiarRuta();
+  if (!entrada || entrada.tipo === 'o') return;
+  var paradas = [], pts = [];
+  if (entrada.tipo === 'c') {
+    var horario = horarioCercanias(entrada.tripId);
+    paradas = coordsDeParadas(idsHorario(horario), window.STOPS_C);
+    if (!paradas.length && window.RUTAS && entrada.rutaIdx !== undefined) {
+      var r = window.RUTAS[entrada.rutaIdx];
+      if (r && r[3]) paradas = coordsDeParadas(r[3], window.STOPS_C);
+    }
+    var geo = (window.GEO_C && entrada.rutaIdx !== undefined) ? window.GEO_C[entrada.rutaIdx] : null;
+    pts = (geo && geo.length > 1) ? geo : paradas;
+  } else {
+    var horarioL = horarioLd(entrada.cod, entrada.proxId, entrada.eta);
+    paradas = coordsDeParadas(idsHorario(horarioL), window.STOPS_LD);
+    pts = paradas;
+  }
+  if (pts.length < 2) return;
+  var color = entrada.tipo === 'c' ? '#00d4ff' : '#c9a6f0';
+  L.polyline(pts, { color: color, weight: 16, opacity: .18, interactive: false }).addTo(rutaLayer);
+  L.polyline(pts, { color: '#0a0e17', weight: 9, opacity: .9, interactive: false }).addTo(rutaLayer);
+  L.polyline(pts, { color: color, weight: 4, opacity: 1, interactive: false }).addTo(rutaLayer);
+  paradas.forEach(function (c, i) {
+    var extremo = (i === 0 || i === paradas.length - 1);
+    L.circleMarker(c, {
+      radius: extremo ? 5 : 3,
+      color: '#0a0e17',
+      weight: extremo ? 2 : 1,
+      fillColor: i === 0 ? '#10b981' : (i === paradas.length - 1 ? '#f87171' : color),
+      fillOpacity: 1,
+      interactive: false
+    }).addTo(rutaLayer);
+  });
+  if (entrada.marker) entrada.marker.bringToFront();
+}
+
+function claveRuta(e) {
+  if (e.tipo === 'o') return 'o:' + e.op + ':' + e.line;
+  return e.tipo === 'c' ? ('c:' + e.linea) : ('l:' + e.o + '>' + e.d);
+}
+
+function pintar() {
+  if (panelAbierto || viajando || hojaAbierta) return;
+  var raw;
+  try { raw = Android.getData(); } catch (e) {
+    pie.innerHTML = '<span class="err">Error de conexión</span>';
+    return;
+  }
+  var d;
+  try { d = JSON.parse(raw); } catch (e) {
+    pie.innerHTML = '<span class="err">Respuesta no válida</span>';
+    return;
+  }
+
+  var nC = 0, nL = 0, nO = 0, errores = [];
+  var DEMORAS = {};
+  if (d.updates && d.updates.entity) {
+    d.updates.entity.forEach(function (u) {
+      var tu = u.tripUpdate;
+      if (!tu || !tu.trip || !tu.trip.tripId) return;
+      var paradas = {}, demora = 0;
+      (tu.stopTimeUpdate || []).forEach(function (st) {
+        var seg = (st.arrival && st.arrival.delay !== undefined)
+          ? st.arrival.delay
+          : (st.departure ? st.departure.delay : undefined);
+        if (typeof seg !== 'number') return;
+        var min = Math.max(0, Math.round(seg / 60));
+        if (st.stopId) paradas[st.stopId] = min;
+        if (min > demora) demora = min;
+      });
+      DEMORAS[tu.trip.tripId] = { min: demora, paradas: paradas };
+    });
+  }
+  capa.clearLayers();
+  ULTIMO = { c: [], l: [], o: [] };
+
+  if (d.cercanias && d.cercanias.entity) {
+    d.cercanias.entity.forEach(function (e) {
+      var pos = e.vehicle && e.vehicle.position;
+      if (!pos) return;
+      var v = e.vehicle, p = v.vehicle || {};
+      var label = p.label || p.id || e.id || '';
+      var ruta = rutaDe(v.trip && v.trip.tripId);
+      var linea = (ruta && ruta.l) ? ruta.l : (label.split('-')[0] || 'Cercanías');
+      var oNom = ruta ? textoEstacion(ruta.o) : '';
+      var dNom = ruta ? textoEstacion(ruta.d) : '';
+      var prox = textoEstacion(v.stopId);
+      var estado = STATUS[v.currentStatus] || v.currentStatus || '';
+      var tripId = (v.trip && v.trip.tripId) || '';
+      var clave = String(tripId).substring(5);
+      var dem = DEMORAS[tripId] || { min: 0, paradas: {} };
+      e._demora = dem.min;
+      e._demoras = dem.paradas;
+      var idxRuta = (window.TRIPS && clave && window.TRIPS[clave] !== undefined)
+        ? window.TRIPS[clave] : undefined;
+      var destinoC = coordsEstacion('c', v.stopId);
+      var gradosC = destinoC
+        ? rumbo(pos.latitude, pos.longitude, destinoC[0], destinoC[1]) : null;
+      var velC = null;
+      if (typeof pos.speed === 'number' && pos.speed >= 0) {
+        var kmC = pos.speed * 3.6;
+        if (kmC <= 400) velC = kmC;
+      }
+      if (velC === null) {
+        velC = velocidadDerivada('c:' + (p.id || tripId || e.id),
+          pos.latitude, pos.longitude, parseInt(v.timestamp || 0, 10));
+      }
+      e._vel = velC;
+      var paradas = (ruta && ruta.paradas) ? ruta.paradas.map(textoEstacion).join(' ') : '';
+      var marker = L.marker([pos.latitude, pos.longitude], {
+        icon: iconoFlecha(gradosC, '#00d4ff', 20),
+        interactive: true,
+        bubblingMouseEvents: false,
+        riseOnHover: true
+      }).addTo(capa);
+      var entrada = {
+        tipo: 'c', marker: marker, linea: linea, o: oNom, d: dNom, prox: prox,
+        tripId: tripId, clave: clave, rutaIdx: idxRuta,
+        badge: linea, badgeColor: '#00d4ff', retraso: dem.min,
+        cardHtml: function () { return cardCercanias(e); },
+        titulo: p.id || label,
+        sub: recorridoRaw(ruta && ruta.o, ruta && ruta.d) +
+             ' · próxima: ' + (prox || '—') + (estado ? ' · ' + estado : ''),
+        texto: norm([label, linea, p.id, oNom, dNom, prox, estado, paradas, tripId].join(' '))
+      };
+      marker._entrada = entrada;
+      marker.on('click', function () { abrirHoja(entrada); });
+      ULTIMO.c.push(entrada);
+      nC++;
+    });
+  } else errores.push('Cercanías');
+
+  if (d.ld && d.ld.trenes) {
+    d.ld.trenes.forEach(function (t) {
+      if (typeof t.latitud !== 'number' || typeof t.longitud !== 'number') return;
+      var serie = String(t.mat || '').substring(0, 3);
+      var info = (window.TRAINS || {})[serie] || {};
+      var serv = PRODUCTOS[String(t.codProduct)] ||
+        (info.modelo ? servicio(info.modelo) : 'Larga distancia');
+      var oNom = textoEstacion(t.codOrigen);
+      var dNom = textoEstacion(t.codDestino);
+      var prox = textoEstacion(t.codEstSig);
+      var retraso = parseInt(t.ultRetraso || '0', 10);
+      var cod = String(t.codComercial || '');
+      var eta = horaCorta(t.horaLlegadaSigEst);
+      var destinoL = coordsEstacion('l', t.codEstSig);
+      var gradosL = destinoL
+        ? rumbo(t.latitud, t.longitud, destinoL[0], destinoL[1]) : null;
+      t._vel = velocidadDerivada('l:' + cod, t.latitud, t.longitud,
+        parseInt(t.time || 0, 10));
+      var marker = L.marker([t.latitud, t.longitud], {
+        icon: iconoFlecha(gradosL, '#c9a6f0', 24),
+        interactive: true,
+        bubblingMouseEvents: false,
+        riseOnHover: true
+      }).addTo(capa);
+      var entrada = {
+        tipo: 'l', marker: marker, o: oNom, d: dNom, prox: prox,
+        cod: cod, proxId: t.codEstSig, eta: eta,
+        badge: serv, badgeColor: colorServicio(serv), retraso: retraso,
+        cardHtml: function () { return cardLarga(t); },
+        titulo: t.codComercial || '',
+        sub: oNom + ' → ' + dNom + ' · próxima: ' + (prox || '—') +
+             (retraso > 0 ? ' · +' + retraso + ' min' : ' · sin retraso'),
+        texto: norm([t.codComercial, serv, t.mat, oNom, dNom, prox, serie].join(' '))
+      };
+      marker._entrada = entrada;
+      marker.on('click', function () { abrirHoja(entrada); });
+      ULTIMO.l.push(entrada);
+      nL++;
+    });
+  } else errores.push('Larga distancia');
+
+  if (d.otros && d.otros.length) {
+    d.otros.forEach(function (t) {
+      if (typeof t.lat !== 'number' || typeof t.lon !== 'number') return;
+      var op = String(t.op || 'Otros');
+      var linea = String(t.line || '');
+      if (op === 'Metro Bilbao' && linea === 'MB') linea = '';
+      var dest = '';
+      if (t.dest) {
+        dest = (window.MB_STOPS && window.MB_STOPS[String(t.dest)]) || String(t.dest);
+      }
+      var hora = horaOtro(t.time);
+      var color = COLOR_OP[op] || '#a5b4fc';
+      var destinoO = op === 'Metro Bilbao' ? coordsEstacion('mb', t.dest) : null;
+      var gradosO = null;
+      if (destinoO) {
+        gradosO = rumbo(t.lat, t.lon, destinoO[0], destinoO[1]);
+      } else {
+        var clavePos = String(t.trip || t.veh || (t.lat + ',' + t.lon));
+        var anterior = ULTIMAS_POS[clavePos];
+        if (anterior && Math.abs(t.lat - anterior[0]) + Math.abs(t.lon - anterior[1]) > 0.0004) {
+          RUMBOS[clavePos] = rumbo(anterior[0], anterior[1], t.lat, t.lon);
+        }
+        ULTIMAS_POS[clavePos] = [t.lat, t.lon];
+        if (RUMBOS[clavePos] !== undefined) gradosO = RUMBOS[clavePos];
+      }
+      var tsO = /^\d+$/.test(String(t.time)) ? parseInt(t.time, 10) : epochDe(t.time);
+      var velO = null;
+      if (typeof t.speed === 'number' && t.speed >= 0) {
+        var kmO = t.speed * 3.6;
+        if (kmO <= 400) velO = kmO;
+      }
+      if (velO === null) {
+        velO = velocidadDerivada('o:' + (t.trip || t.veh), t.lat, t.lon, tsO);
+      }
+      var marker = L.marker([t.lat, t.lon], {
+        icon: iconoFlecha(gradosO, color, 20),
+        interactive: true,
+        bubblingMouseEvents: false,
+        riseOnHover: true
+      }).addTo(capa);
+      var entrada = {
+        tipo: 'o', marker: marker, op: op, line: linea, dest: dest,
+        veh: String(t.veh || ''),
+        servicio: op === 'Metro Bilbao' ? String(t.trip || '') : '',
+        hora: hora,
+        vel: velO,
+        badge: op === 'Metro Bilbao' ? 'Metro Bilbao' : 'FGC',
+        badgeColor: color, retraso: 0,
+        cardHtml: function () { return cardOtro(entrada); },
+        titulo: op === 'Metro Bilbao'
+          ? ('Servicio ' + (t.trip || ''))
+          : (t.veh || op),
+        sub: (dest ? 'Destino ' + dest : '') + (hora ? (dest ? ' · ' : '') + hora : ''),
+        texto: norm([op, linea, dest, t.veh, t.trip, hora].join(' ')),
+        o: '', d: dest, prox: ''
+      };
+      marker._entrada = entrada;
+      marker.on('click', function () { abrirHoja(entrada); });
+      ULTIMO.o.push(entrada);
+      nO++;
+    });
+  }
+
+  chips.innerHTML =
+    '<span class="chip"><span class="dot c"></span><b>' + nC + '</b> Cercanías</span>' +
+    '<span class="chip"><span class="dot l"></span><b>' + nL + '</b> Larga distancia</span>' +
+    '<span class="chip"><span class="dot o"></span><b>' + nO + '</b> Otros</span>';
+
+  var ahora = new Date().toLocaleTimeString('es-ES',
+    { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  actEl.textContent = ahora;
+  pie.innerHTML = 'Renfe · FGC · Metro Bilbao' +
+    (errores.length ? ' · <span class="err">sin datos: ' + errores.join(', ') + '</span>' : '');
+  ajustarControles();
+}
+
+function construirTipos() {
+  var tipos = [['todo', 'Todo'], ['c', 'Cercanías'], ['l', 'Larga distancia'], ['o', 'Otros']];
+  tiposEl.innerHTML = tipos.map(function (t) {
+    return '<button class="chipbtn' + (TIPO === t[0] ? ' on' : '') + '" data-tipo="' +
+      t[0] + '">' + t[1] + '</button>';
+  }).join('');
+}
+
+function construirRutas() {
+  var cuenta = {}, orden = [];
+  ULTIMO.c.forEach(function (e) {
+    var k = 'c:' + e.linea;
+    if (!cuenta[k]) { cuenta[k] = { clave: k, tipo: 'c', etiqueta: e.linea, n: 0 }; orden.push(k); }
+    cuenta[k].n++;
+  });
+  ULTIMO.l.forEach(function (e) {
+    var k = 'l:' + e.o + '>' + e.d;
+    if (!cuenta[k]) { cuenta[k] = { clave: k, tipo: 'l', etiqueta: e.o + ' → ' + e.d, n: 0 }; orden.push(k); }
+    cuenta[k].n++;
+  });
+  ULTIMO.o.forEach(function (e) {
+    var k = 'o:' + e.op + ':' + e.line;
+    if (!cuenta[k]) {
+      cuenta[k] = { clave: k, tipo: 'o', etiqueta: e.op + (e.line ? ' ' + e.line : ''), n: 0 };
+      orden.push(k);
+    }
+    cuenta[k].n++;
+  });
+  CHIPS = orden.map(function (k) { return cuenta[k]; })
+    .sort(function (a, b) { return b.n - a.n; });
+  rutasEl.innerHTML = CHIPS.map(function (c) {
+    return '<button class="chipbtn' + (RUTA === c.clave ? ' on' : '') + '" data-ruta="' +
+      esc(c.clave) + '">' + esc(c.etiqueta) + ' · ' + c.n + '</button>';
+  }).join('');
+}
+
+function construirChips() {
+  construirTipos();
+  construirRutas();
+}
+
+function filaTrenHtml(e, i, estacion) {
+  var dotColor = e.tipo === 'c' ? '#00d4ff'
+    : (e.tipo === 'l' ? '#c9a6f0' : (COLOR_OP[e.op] || '#a5b4fc'));
+  var badge = e.badge
+    ? '<span class="badge" style="color:' + e.badgeColor + ';background:' + e.badgeColor +
+      '1f;border-color:' + e.badgeColor + '40">' + esc(e.badge) + '</span>' : '';
+  var delay = ((e.retraso || 0) > 0)
+    ? '<span class="delay">+' + e.retraso + ' min</span>' : '';
+  var attr = estacion ? ' data-est-tren="' + i + '"' : ' data-i="' + i + '"';
+  return '<div class="res"' + attr + '>' +
+    '<span class="dot" style="background:' + dotColor + '"></span>' +
+    '<div class="cuerpo"><div class="l1">' + badge + '<span class="t">' + esc(e.titulo) +
+    '</span>' + delay + '</div><div class="s">' + esc(e.sub) + '</div></div></div>';
+}
+
+function listaEstaciones() {
+  if (ESTACIONES_LISTA) return ESTACIONES_LISTA;
+  var vistos = {}, salida = [];
+  function add(nombre, codigo) {
+    if (!nombre) return;
+    var k = norm(nombre);
+    if (!k || vistos[k]) return;
+    vistos[k] = 1;
+    salida.push({ nombre: nombre, codigo: codigo });
+  }
+  Object.keys(window.STATIONS || {}).forEach(function (id) {
+    add(window.STATIONS[id], id);
+  });
+  Object.keys(window.STOPS_LD || {}).forEach(function (id) {
+    var v = window.STOPS_LD[id];
+    if (v && v[2]) add(v[2], id);
+  });
+  ESTACIONES_LISTA = salida;
+  return salida;
+}
+
+function estacionesCoincidentes(tokens) {
+  var out = [];
+  listaEstaciones().forEach(function (s) {
+    var n = norm(s.nombre);
+    var ok = true;
+    tokens.forEach(function (t) { if (n.indexOf(t) < 0) ok = false; });
+    if (ok) out.push(s);
+  });
+  out.sort(function (a, b) { return norm(a.nombre).length - norm(b.nombre).length; });
+  return out;
+}
+
+function render() {
+  var tokens = norm(q.value).split(/\s+/).filter(Boolean);
+  var base = [];
+  if (TIPO === 'todo' || TIPO === 'c') base = base.concat(ULTIMO.c);
+  if (TIPO === 'todo' || TIPO === 'l') base = base.concat(ULTIMO.l);
+  if (TIPO === 'todo' || TIPO === 'o') base = base.concat(ULTIMO.o);
+
+  var res = [];
+  base.forEach(function (e) {
+    if (RUTA && claveRuta(e) !== RUTA) return;
+    var ok = true, score = 0;
+    tokens.forEach(function (t) {
+      if (e.texto.indexOf(t) < 0) { ok = false; return; }
+      if (e.d && norm(e.d).indexOf(t) >= 0) score += 3;
+      else if (e.o && norm(e.o).indexOf(t) >= 0) score += 2;
+      else score += 1;
+    });
+    if (ok) res.push({ e: e, score: score });
+  });
+
+  res.sort(function (a, b) {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.e.tipo !== b.e.tipo) return a.e.tipo === 'c' ? -1 : 1;
+    return (a.e.titulo + a.e.sub).localeCompare(b.e.titulo + b.e.sub);
+  });
+
+  var max = 120;
+  var ests = tokens.length ? estacionesCoincidentes(tokens).slice(0, 6) : [];
+  ESTACIONES_MOSTRADAS = ests;
+  var cuenta = res.length + (res.length === 1 ? ' tren' : ' trenes');
+  if (ests.length) {
+    cuenta += ' · ' + ests.length + (ests.length === 1 ? ' estación' : ' estaciones');
+  }
+  if (res.length > max) cuenta += ' · mostrando ' + max;
+  cuentaEl.textContent = cuenta;
+  var htmlEst = ests.map(function (s, i) {
+    return '<div class="res res-est" data-est="' + i + '">' +
+      '<span class="dot" style="background:#8b9dba"></span>' +
+      '<div class="cuerpo"><div class="l1"><span class="badge" style="color:#8b9dba;background:#8b9dba1f;border-color:#8b9dba40">Estación</span>' +
+      '<span class="t">' + esc(s.nombre) + '</span></div>' +
+      '<div class="s">Ver trenes con destino aquí</div></div></div>';
+  }).join('');
+  var htmlTren = res.slice(0, max).map(function (r, i) {
+    return filaTrenHtml(r.e, i, false);
+  }).join('');
+  listaEl.innerHTML = htmlEst + (htmlTren || (htmlEst ? '' : '<div class="vacio">Sin resultados</div>'));
+  RESULTADOS = res;
+}
+
+function abrirPanel() {
+  cerrarHoja();
+  panelAbierto = true;
+  document.body.classList.add('buscando');
+  panel.classList.add('abierto');
+  velo.classList.add('abierto');
+  capasMenuEl.classList.remove('abierto');
+  q.value = '';
+  TIPO = 'todo';
+  RUTA = '';
+  construirChips();
+  render();
+  setTimeout(function () { q.focus(); }, 260);
+}
+
+function cerrarPanel() {
+  panelAbierto = false;
+  document.body.classList.remove('buscando');
+  panel.classList.remove('abierto');
+  velo.classList.remove('abierto');
+  q.blur();
+}
+
+tiposEl.addEventListener('click', function (ev) {
+  var b = ev.target.closest('button');
+  if (!b) return;
+  TIPO = b.getAttribute('data-tipo');
+  if (RUTA && TIPO !== 'todo' && RUTA.charAt(0) !== TIPO) RUTA = '';
+  construirChips();
+  render();
+});
+
+rutasEl.addEventListener('click', function (ev) {
+  var b = ev.target.closest('button');
+  if (!b) return;
+  var k = b.getAttribute('data-ruta');
+  if (RUTA === k) RUTA = '';
+  else { RUTA = k; TIPO = k.charAt(0); }
+  construirChips();
+  render();
+});
+
+listaEl.addEventListener('click', function (ev) {
+  var estEl = ev.target.closest ? ev.target.closest('.res-est') : null;
+  if (estEl) {
+    var s = ESTACIONES_MOSTRADAS[parseInt(estEl.getAttribute('data-est'), 10)];
+    if (s) { cerrarPanel(); abrirEstacion(s); }
+    return;
+  }
+  var el = ev.target.closest ? ev.target.closest('.res') : null;
+  if (!el) return;
+  var item = RESULTADOS[parseInt(el.getAttribute('data-i'), 10)];
+  if (!item) return;
+  var marker = item.e.marker;
+  cerrarPanel();
+  if (marker) {
+    viajando = true;
+    map.flyTo(marker.getLatLng(), 11, { duration: 0.6 });
+    setTimeout(function () {
+      abrirHoja(item.e);
+      viajando = false;
+    }, 700);
+  }
+});
+
+function toggleMenuCapas() {
+  var r = document.getElementById('hud').getBoundingClientRect();
+  capasMenuEl.style.top = (r.bottom + 8) + 'px';
+  capasMenuEl.classList.toggle('abierto');
+}
+
+capasMenuEl.addEventListener('click', function (ev) {
+  var b = ev.target.closest('button');
+  if (!b) return;
+  aplicarCapa(b.getAttribute('data-capa'));
+});
+
+map.on('click', function () {
+  capasMenuEl.classList.remove('abierto');
+  cerrarHoja();
+});
+
+document.getElementById('hojaTop').addEventListener('click', function (ev) {
+  if (ev.target.closest('button')) return;
+  alternarHoja();
+});
+hojaToggle.addEventListener('click', function (ev) {
+  ev.stopPropagation();
+  alternarHoja();
+});
+document.getElementById('hojaCerrar').addEventListener('click', function (ev) {
+  ev.stopPropagation();
+  cerrarHoja();
+});
+hojaCuerpo.addEventListener('click', function (ev) {
+  var row = ev.target.closest ? ev.target.closest('[data-est-tren]') : null;
+  if (!row) return;
+  var e = ESTACION_TRENES[parseInt(row.getAttribute('data-est-tren'), 10)];
+  if (e) abrirHoja(e);
+});
+window.addEventListener('resize', ajustarControles);
+
+q.addEventListener('input', render);
+document.getElementById('buscar').onclick = abrirPanel;
+document.getElementById('capasBtn').onclick = toggleMenuCapas;
+document.getElementById('cerrar').onclick = cerrarPanel;
+velo.addEventListener('click', cerrarPanel);
+document.getElementById('reload').onclick = pintar;
+
+pintar();
+setInterval(pintar, 30000);
+setTimeout(function () { foto('Cercanías Renfe'); }, 1500);
+setTimeout(ajustarControles, 1200);
+</script>
+</body>
+</html>
