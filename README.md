@@ -7,8 +7,6 @@ Muestra Renfe (Cercanías, AVE, AVLO, Alvia, Avant, Euromed, Intercity, Regional
 
 <br clear="left">
 
-<img src="docs/screenshot.png" width="300" alt="Captura de la app">
-
 ## Funciones
 
 - Mapa con flechas orientadas al rumbo y velocidad actual calculada por GPS.
